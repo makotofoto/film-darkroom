@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no">
+<title>暗房 Darkroom</title>
+<meta name="description" content="底片模擬暗房：選底片、進彩色或黑白暗房沖洗。">
+<meta name="theme-color" content="#0a0908">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="暗房">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" type="image/png" href="icons/icon-180.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body data-mode="color">
+<div id="app">
+
+  <header>
+    <span class="lamp"></span>
+    <span class="room-name" id="roomName">彩色暗房</span>
+    <div class="mode-switch" role="group" aria-label="暗房">
+      <button id="mColor" aria-pressed="true">彩色</button>
+      <button id="mBw" aria-pressed="false">黑白</button>
+    </div>
+  </header>
+
+  <div class="stage">
+    <div class="tray" id="tray">
+      <canvas id="view" width="2" height="2"></canvas>
+      <canvas id="maskLayer"></canvas>
+      <span class="badge" id="badge"></span>
+      <div class="empty" id="empty">
+        <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+          <rect x="2.5" y="6" width="19" height="12.5" rx="1.5"/>
+          <circle cx="12" cy="12.25" r="3.4"/>
+          <path d="M2.5 8.2h19M2.5 16.3h19" stroke-dasharray="1.4 2.2"/>
+        </svg>
+        <p>先裝一卷底片，然後開相機拍，或從相簿拿一張進來沖洗。</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="films" id="films"></div>
+
+  <section class="panel" id="panel">
+    <div class="tabs" role="tablist">
+      <button id="tFilm" role="tab" aria-selected="true">底片</button>
+      <button id="tRoom" role="tab" aria-selected="false">暗房</button>
+      <button id="tOut"  role="tab" aria-selected="false">輸出</button>
+      <span class="spacer"></span>
+      <button class="chev" id="chev" aria-label="收合">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M6 14l6-6 6 6"/>
+        </svg>
+      </button>
+    </div>
+    <div class="pbody" id="pbody"></div>
+  </section>
+
+  <nav class="dock">
+    <button id="bCam">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M3 8.5A1.5 1.5 0 014.5 7h2L8 5h8l1.5 2h2A1.5 1.5 0 0121 8.5v9A1.5 1.5 0 0119.5 19h-15A1.5 1.5 0 013 17.5v-9z"/>
+        <circle cx="12" cy="13" r="3.3"/>
+      </svg>相機
+    </button>
+    <button id="bLib">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <rect x="3" y="4.5" width="18" height="15" rx="2"/>
+        <path d="M3 16l4.5-4.5 3.5 3.5L15 11l6 6"/><circle cx="8.5" cy="9" r="1.4"/>
+      </svg>相簿
+    </button>
+    <button id="bShot" class="shutter" hidden>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+        <circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4" fill="currentColor"/>
+      </svg>快門
+    </button>
+    <button id="bFlip" hidden>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M4 9a8 8 0 0113.6-3.4L20 8"/><path d="M20 4v4h-4"/>
+        <path d="M20 15a8 8 0 01-13.6 3.4L4 16"/><path d="M4 20v-4h4"/>
+      </svg>翻面
+    </button>
+    <button id="bSave" class="primary" disabled>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+        <path d="M12 3.5v11"/><path d="M8 11l4 4 4-4"/><path d="M4.5 19.5h15"/>
+      </svg>存檔
+    </button>
+  </nav>
+
+</div>
+
+<input type="file" id="file" accept="image/*" hidden>
+<video id="video" playsinline muted autoplay hidden></video>
+<div class="toast" id="toast"></div>
+
+<script src="js/films.js"></script>
+<script src="js/gl.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
