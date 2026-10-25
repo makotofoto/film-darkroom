@@ -193,11 +193,11 @@ header {
   border-top: 1px solid var(--line);
   border-radius: var(--r) var(--r) 0 0;
   display: flex; flex-direction: column;
-  max-height: 44dvh;
   transition: max-height var(--t);
 }
 .panel.collapsed { max-height: 44px }
-.panel.collapsed .pbody { display: none }
+.panel.collapsed .toolrow,
+.panel.collapsed .slot { display: none }
 
 .tabs {
   display: flex; align-items: center; gap: 2px;
@@ -385,3 +385,58 @@ body[data-live="on"] .frame-bar { display: flex }
 body[data-live="on"] #bClose { order: 1 }
 body[data-live="on"] #bShot  { order: 2; flex: 1.5 }
 body[data-live="on"] #bFlip  { order: 3 }
+
+
+/* ───────── 工具列 + 單一控制項 ───────── */
+/* 沖洗時一次只顯示一個控制項，照片才留得住畫面 */
+.toolrow {
+  display: flex; gap: 5px; overflow-x: auto; overflow-y: hidden;
+  padding: 7px 14px 6px; flex: 0 0 auto;
+  -webkit-overflow-scrolling: touch; scrollbar-width: none;
+}
+.toolrow::-webkit-scrollbar { display: none }
+.toolrow button {
+  appearance: none; flex: 0 0 auto; border: 1px solid transparent;
+  background: var(--panel-2); color: var(--dim); font: inherit; font-size: 12.5px;
+  padding: 6px 12px; border-radius: 9px; cursor: pointer;
+  transition: all var(--t); white-space: nowrap;
+}
+.toolrow button[aria-pressed="true"] {
+  background: var(--accent); color: var(--accent-ink); font-weight: 600;
+}
+
+.slot {
+  padding: 2px 14px 12px; flex: 0 0 auto;
+  display: flex; flex-direction: column; gap: 9px;
+}
+.slot .ctl { gap: 9px }
+.slot .seg { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 1px }
+.slot .seg::-webkit-scrollbar { display: none }
+.slot .seg button { flex: 0 0 auto }
+.slot .note { margin: 0 }
+
+/* 底片改成橫捲小卡 */
+.filmchips {
+  display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none;
+  padding-bottom: 1px;
+}
+.filmchips::-webkit-scrollbar { display: none }
+.filmchips button {
+  appearance: none; flex: 0 0 auto; text-align: left;
+  border: 1px solid var(--line-2); background: var(--panel-2);
+  color: var(--txt); font: inherit; padding: 6px 10px; border-radius: 9px;
+  cursor: pointer; transition: all var(--t); white-space: nowrap;
+  display: flex; flex-direction: column; gap: 1px;
+}
+.filmchips button[aria-pressed="true"] {
+  border-color: var(--accent); background: var(--accent); color: var(--accent-ink);
+}
+.filmchips .fc-n { font-size: 12.5px; font-weight: 600 }
+.filmchips .fc-b {
+  font: 500 9.5px/1.2 ui-monospace, Menlo, monospace;
+  opacity: .62; letter-spacing: .04em;
+}
+.filmnote { font-size: 11px; line-height: 1.5; color: var(--dim) }
+
+/* 沖洗時不用常駐底片條 —— 它在「選底片」工具裡 */
+body:not([data-live="on"]) .films { display: none }

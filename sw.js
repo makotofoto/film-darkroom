@@ -1,4 +1,4 @@
-const CACHE = 'darkroom-v2';
+const CACHE = 'darkroom-v3';
 const ASSETS = [
   './', './index.html', './css/style.css',
   './js/films.js', './js/gl.js', './js/app.js',

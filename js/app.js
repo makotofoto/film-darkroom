@@ -16,6 +16,7 @@ const S = {
   mode: 'color',
   filmId: 'portra400',
   tab: 'film',
+  tools: { film: 'pick', room: 'time', out: 'border' },
   expert: true,
 
   // 底片階段
@@ -757,221 +758,282 @@ function sub(text) {
 }
 function sep() { const h = document.createElement('hr'); h.className = 'sep'; return h; }
 
-// ── 面板 ──
-function buildPanel() {
-  const body = $('pbody');
-  body.innerHTML = '';
+// ── 面板：一次只顯示一個控制項，照片才留得住畫面 ──
+//    [分頁] → [工具列（橫捲）] → [當下那一個控制項]
+
+function toolsFor(tab) {
   const f = currentFilm();
   const isBW = S.mode === 'bw';
 
+  if (tab === 'film') {
+    const t = [
+      { id: 'pick', label: '選底片', make: slotFilms },
+      { id: 'push', label: '推拉顯影', make: () => slider({
+          label: '推拉顯影', hint: '推 → 反差高、顆粒粗', min: -2, max: 3, step: 1,
+          get: () => S.push, set: v => S.push = v, badge: true,
+          fmt: v => v === 0 ? '標準' : (v > 0 ? `推 +${v}` : `拉 ${v}`) }) },
+      { id: 'ev', label: '曝光補償', make: () => slider({
+          label: '曝光補償', hint: '拍攝時的進光量', min: -2, max: 2, step: 0.1,
+          get: () => S.evComp, set: v => S.evComp = v,
+          fmt: v => (v > 0 ? '+' : '') + v.toFixed(1) + ' EV' }) },
+      { id: 'grain', label: '顆粒', make: () => slider({
+          label: '顆粒', min: 0, max: 220, step: 5,
+          get: () => S.grainMul * 100, set: v => S.grainMul = v / 100,
+          fmt: v => v + '%' }) }
+    ];
+    if (f.halation > 0.001 || !isBW) {
+      t.push({ id: 'halo', label: '光暈', make: () => slider({
+        label: '紅色光暈', hint: f.halation > 0.4 ? '這支底片天生會爆' : '高光溢出',
+        min: 0, max: 250, step: 5,
+        get: () => S.haloMul * 100, set: v => S.haloMul = v / 100,
+        fmt: v => v + '%' }) });
+    }
+    t.push(
+      { id: 'vig', label: '暗角', make: () => slider({
+          label: '鏡頭暗角', min: 0, max: 100, step: 2,
+          get: () => S.vignette, set: v => S.vignette = v, fmt: v => v + '%' }) },
+      { id: 'leak', label: '漏光', make: () => slider({
+          label: '漏光', hint: '片盒沒關緊', min: 0, max: 100, step: 2,
+          get: () => S.leak, set: v => S.leak = v, fmt: v => v + '%' }) }
+    );
+    return t;
+  }
+
+  if (tab === 'room') {
+    const mode = { id: 'how', label: '操作方式', make: () => seg({
+      label: '操作方式', items: [{ label: '簡易', value: false }, { label: '專家暗房', value: true }],
+      get: () => S.expert, set: v => S.expert = v, rebuild: true }) };
+
+    if (!S.expert) {
+      const t = [mode,
+        { id: 'bright', label: '亮度', make: () => slider({
+            label: '亮度', min: -2, max: 2, step: 0.05,
+            get: () => S.sBright, set: v => S.sBright = v,
+            fmt: v => (v > 0 ? '+' : '') + v.toFixed(2) }) },
+        { id: 'con', label: '反差', make: () => slider({
+            label: '反差', min: -1, max: 1, step: 0.02,
+            get: () => S.sCon, set: v => S.sCon = v,
+            fmt: v => (v > 0 ? '+' : '') + v.toFixed(2) }) }
+      ];
+      if (!isBW) t.push(
+        { id: 'warm', label: '色溫', make: () => slider({
+            label: '色溫', hint: '左冷 → 右暖', min: -1, max: 1, step: 0.02,
+            get: () => S.sWarm, set: v => S.sWarm = v,
+            fmt: v => v === 0 ? '中性' : (v > 0 ? '暖 ' + v.toFixed(2) : '冷 ' + (-v).toFixed(2)) }) },
+        { id: 'tint', label: '色調', make: () => slider({
+            label: '色調', hint: '左綠 → 右洋紅', min: -1, max: 1, step: 0.02,
+            get: () => S.sTint, set: v => S.sTint = v,
+            fmt: v => v === 0 ? '中性' : (v > 0 ? '洋紅 ' + v.toFixed(2) : '綠 ' + (-v).toFixed(2)) }) },
+        { id: 'sat', label: '飽和度', make: () => slider({
+            label: '飽和度', min: 0, max: 200, step: 5,
+            get: () => S.sSat, set: v => S.sSat = v, fmt: v => v + '%' }) }
+      );
+      else t.push({ id: 'toner', label: '調色', make: slotToner });
+      t.push(brushTool());
+      return t;
+    }
+
+    const t = [mode,
+      { id: 'time', label: '曝光時間', make: () => slider({
+          label: '曝光時間', hint: '時間愈長 → 照片愈暗', min: 2, max: 60, step: 1,
+          get: () => S.time, set: v => S.time = v, fmt: v => v + ' 秒' }) },
+      { id: 'fstop', label: '光圈', make: () => seg({
+          label: '鏡頭光圈', hint: '縮光圈 → 照片變亮',
+          items: F_STOPS.map((v, i) => ({ label: 'f/' + v, value: i })),
+          get: () => S.fstopIdx, set: v => S.fstopIdx = v }) }
+    ];
+
+    if (!isBW) {
+      t.push(
+        { id: 'y', label: '黃 Y', make: () => slider({
+            label: '黃 Yellow', hint: '→ 畫面偏藍', min: 0, max: 170, step: 5,
+            get: () => S.cy, set: v => S.cy = v, fmt: v => String(v) }) },
+        { id: 'm', label: '洋紅 M', make: () => slider({
+            label: '洋紅 Magenta', hint: '→ 畫面偏綠', min: 0, max: 170, step: 5,
+            get: () => S.cm, set: v => S.cm = v, fmt: v => String(v) }) },
+        { id: 'c', label: '青 C', make: () => slider({
+            label: '青 Cyan', hint: '→ 畫面偏紅', min: 0, max: 170, step: 5,
+            get: () => S.cc, set: v => S.cc = v, fmt: v => String(v) }) },
+        { id: 'preset', label: '光源', make: slotLightPresets },
+        { id: 'paper', label: '相紙', make: () => seg({
+            label: '相紙', items: PAPERS.color.map(p => ({ label: p.name, value: p.id })),
+            get: () => S.paperC, set: v => S.paperC = v, rebuild: true }) }
+      );
+    } else {
+      t.push(
+        { id: 'grade', label: '號數', make: () => seg({
+            label: '反差號數', hint: '0 最軟 · 5 最硬', cls: 'grades',
+            items: [0, 1, 2, 3, 4, 5].map(g => ({ label: String(g), value: g })),
+            get: () => S.grade, set: v => S.grade = v }) },
+        { id: 'paper', label: '紙張', make: () => seg({
+            label: '紙張', items: PAPERS.bw.map(p => ({ label: p.name.replace('Multigrade ', 'MG '), value: p.id })),
+            get: () => S.paperB, set: v => S.paperB = v, rebuild: true }) },
+        { id: 'toner', label: '調色', make: slotToner },
+        { id: 'bleach', label: '減薄劑', make: () => slider({
+            label: '減薄劑', hint: '弱化暗部', min: 0, max: 100, step: 5,
+            get: () => S.bleach, set: v => S.bleach = v, fmt: v => v + '%' }) }
+      );
+    }
+    t.push(brushTool());
+    return t;
+  }
+
+  return [
+    { id: 'border', label: '邊框', make: () => seg({
+        label: '邊框', items: [
+          { label: '無', value: 'none' },
+          { label: '相紙白邊', value: 'paper' },
+          { label: '底片齒孔', value: 'film' }],
+        get: () => S.border, set: v => S.border = v }) },
+    { id: 'stamp', label: '日期戳印', make: () => toggle(
+        '日期戳印', () => S.stamp, v => S.stamp = v, '印在右下角').el },
+    { id: 'info', make: slotInfo, label: '資訊' }
+  ];
+}
+
+function brushTool() {
+  return { id: 'brush', label: '加光 / 遮光', make: slotBrush };
+}
+
+// ── 各種控制項 ──
+function slotFilms() {
+  const wrap = document.createElement('div');
+  wrap.className = 'ctl';
+  const f = currentFilm();
+  wrap.innerHTML = `<div class="filmchips"></div>` +
+    `<div class="filmnote">${f.brand} ${f.name} — ${f.note}</div>`;
+  const box = wrap.querySelector('.filmchips');
+  const list = S.mode === 'bw'
+    ? FILMS.filter(x => x.type === 'bw').concat(FILMS.filter(x => x.type !== 'bw'))
+    : FILMS.filter(x => x.type !== 'bw');
+  list.forEach(x => {
+    const b = document.createElement('button');
+    b.setAttribute('aria-pressed', String(x.id === S.filmId));
+    b.innerHTML = `<span class="fc-n">${x.name}</span>` +
+      `<span class="fc-b">${x.brand} · ISO ${x.iso}${S.mode === 'bw' && x.type !== 'bw' ? ' · 印黑白' : ''}</span>`;
+    b.onclick = () => {
+      S.filmId = x.id;
+      S.seed = Math.random() * 100;
+      buildPanel(); buildFilms(); updateBadge(); requestRender();
+    };
+    box.appendChild(b);
+  });
+  setTimeout(() => {
+    const sel = box.querySelector('[aria-pressed="true"]');
+    if (sel) sel.scrollIntoView({ inline: 'center', block: 'nearest' });
+  }, 0);
+  return wrap;
+}
+
+function slotToner() {
+  const wrap = document.createElement('div');
+  wrap.className = 'ctl';
+  wrap.appendChild(seg({
+    items: TONERS.map(t => ({ label: t.name, value: t.id })),
+    get: () => S.toner, set: v => S.toner = v, rebuild: true
+  }));
+  if (S.toner !== 'none') {
+    wrap.appendChild(slider({
+      label: '調色濃度', min: 0, max: 150, step: 5,
+      get: () => S.tonerAmt, set: v => S.tonerAmt = v, fmt: v => v + '%'
+    }));
+  }
+  return wrap;
+}
+
+function slotLightPresets() {
+  const wrap = document.createElement('div');
+  wrap.className = 'ctl';
+  wrap.innerHTML = '<div class="top"><span class="lab">光源預設</span>' +
+    '<span class="hint">一次設好三個濾鏡</span></div><div class="seg"></div>';
+  const box = wrap.querySelector('.seg');
+  [['日光', 0, 0, 0], ['鎢絲燈', 0, 15, 75], ['陰天', 25, 10, 0],
+   ['螢光燈', 10, 45, 0], ['黃昏', 45, 20, 0]].forEach(([n, c, m, y]) => {
+    const b = document.createElement('button');
+    b.textContent = n;
+    b.setAttribute('aria-pressed', String(S.cc === c && S.cm === m && S.cy === y));
+    b.onclick = () => { S.cc = c; S.cm = m; S.cy = y; buildPanel(); requestRender(); };
+    box.appendChild(b);
+  });
+  return wrap;
+}
+
+function slotBrush() {
+  const wrap = document.createElement('div');
+  wrap.className = 'ctl';
+  if (live) {
+    wrap.appendChild(note('先拍一張，才能在相紙上加減光。'));
+    return wrap;
+  }
+  const row = seg({
+    items: [{ label: '加光（變暗）', value: 'burn' }, { label: '遮光（變亮）', value: 'dodge' }],
+    get: () => S.brushMode, set: v => S.brushMode = v
+  });
+  const clr = document.createElement('button');
+  clr.textContent = '洗掉';
+  clr.onclick = clearMask;
+  row.querySelector('.seg').appendChild(clr);
+  wrap.appendChild(row);
+  wrap.appendChild(slider({
+    label: '筆刷大小', min: 8, max: 80, step: 2,
+    get: () => S.brushSize, set: v => S.brushSize = v, fmt: v => v + '%'
+  }));
+  wrap.appendChild(slider({
+    label: '力道', min: 10, max: 200, step: 5,
+    get: () => S.brushK, set: v => S.brushK = v, fmt: v => v + '%'
+  }));
+  return wrap;
+}
+
+function slotInfo() {
+  const wrap = document.createElement('div');
+  wrap.className = 'ctl';
+  wrap.appendChild(note('存檔會用原始解析度重新沖洗一次，然後開啟分享選單 — 選「儲存影像」就會進相簿。'));
+  const info = document.createElement('div');
+  info.className = 'sub';
+  info.textContent = src.w ? `原稿 ${src.w} × ${src.h}` : '還沒有影像';
+  wrap.appendChild(info);
+  return wrap;
+}
+
+// ── 組裝 ──
+function buildPanel() {
   $('tFilm').setAttribute('aria-selected', S.tab === 'film');
   $('tRoom').setAttribute('aria-selected', S.tab === 'room');
   $('tOut').setAttribute('aria-selected', S.tab === 'out');
 
-  if (S.tab === 'film') {
-    body.appendChild(note(`${f.brand} ${f.name} — ${f.note}`));
-    body.appendChild(slider({
-      label: '推拉顯影', hint: '推 → 反差高、顆粒粗', min: -2, max: 3, step: 1,
-      get: () => S.push, set: v => S.push = v, badge: true,
-      fmt: v => v === 0 ? '標準' : (v > 0 ? `推 +${v}` : `拉 ${v}`)
-    }));
-    body.appendChild(slider({
-      label: '曝光補償', hint: '拍攝時的進光量', min: -2, max: 2, step: 0.1,
-      get: () => S.evComp, set: v => S.evComp = v,
-      fmt: v => (v > 0 ? '+' : '') + v.toFixed(1) + ' EV'
-    }));
-    body.appendChild(sep());
-    body.appendChild(slider({
-      label: '顆粒', min: 0, max: 220, step: 5,
-      get: () => S.grainMul * 100, set: v => S.grainMul = v / 100,
-      fmt: v => v + '%'
-    }));
-    if (f.halation > 0.001 || !isBW) {
-      body.appendChild(slider({
-        label: '紅色光暈', hint: f.halation > 0.4 ? '這支底片天生會爆' : '高光溢出',
-        min: 0, max: 250, step: 5,
-        get: () => S.haloMul * 100, set: v => S.haloMul = v / 100,
-        fmt: v => v + '%'
-      }));
-    }
-    body.appendChild(slider({
-      label: '鏡頭暗角', min: 0, max: 100, step: 2,
-      get: () => S.vignette, set: v => S.vignette = v, fmt: v => v + '%'
-    }));
-    body.appendChild(slider({
-      label: '漏光', hint: '片盒沒關緊', min: 0, max: 100, step: 2,
-      get: () => S.leak, set: v => S.leak = v, fmt: v => v + '%'
-    }));
-  }
+  const tools = toolsFor(S.tab);
+  let cur = S.tools[S.tab];
+  if (!tools.some(t => t.id === cur)) cur = S.tools[S.tab] = tools[0].id;
 
-  if (S.tab === 'room') {
-    body.appendChild(seg({
-      label: '操作方式', items: [
-        { label: '簡易', value: false }, { label: '專家暗房', value: true }
-      ],
-      get: () => S.expert, set: v => S.expert = v, rebuild: true
-    }));
-    body.appendChild(sep());
+  // 只有停在「加光 / 遮光」時，手指才在照片上畫
+  S.brush = (cur === 'brush' && !live);
+  $('tray').dataset.brush = S.brush ? 'on' : 'off';
 
-    if (!S.expert) {
-      body.appendChild(slider({
-        label: '亮度', min: -2, max: 2, step: 0.05,
-        get: () => S.sBright, set: v => S.sBright = v,
-        fmt: v => (v > 0 ? '+' : '') + v.toFixed(2)
-      }));
-      body.appendChild(slider({
-        label: '反差', min: -1, max: 1, step: 0.02,
-        get: () => S.sCon, set: v => S.sCon = v,
-        fmt: v => (v > 0 ? '+' : '') + v.toFixed(2)
-      }));
-      if (!isBW) {
-        body.appendChild(slider({
-          label: '色溫', hint: '左冷 → 右暖', min: -1, max: 1, step: 0.02,
-          get: () => S.sWarm, set: v => S.sWarm = v,
-          fmt: v => v === 0 ? '中性' : (v > 0 ? '暖 ' + v.toFixed(2) : '冷 ' + (-v).toFixed(2))
-        }));
-        body.appendChild(slider({
-          label: '色調', hint: '左綠 → 右洋紅', min: -1, max: 1, step: 0.02,
-          get: () => S.sTint, set: v => S.sTint = v,
-          fmt: v => v === 0 ? '中性' : (v > 0 ? '洋紅 ' + v.toFixed(2) : '綠 ' + (-v).toFixed(2))
-        }));
-        body.appendChild(slider({
-          label: '飽和度', min: 0, max: 200, step: 5,
-          get: () => S.sSat, set: v => S.sSat = v, fmt: v => v + '%'
-        }));
-      }
-    } else {
-      // 放大機
-      body.appendChild(sub('放大機'));
-      body.appendChild(slider({
-        label: '曝光時間', hint: '時間愈長 → 照片愈暗', min: 2, max: 60, step: 1,
-        get: () => S.time, set: v => S.time = v, fmt: v => v + ' 秒'
-      }));
-      body.appendChild(seg({
-        label: '鏡頭光圈', hint: '縮光圈 → 照片變亮',
-        items: F_STOPS.map((v, i) => ({ label: 'f/' + v, value: i })),
-        get: () => S.fstopIdx, set: v => S.fstopIdx = v
-      }));
+  const row = $('toolrow');
+  row.innerHTML = '';
+  tools.forEach(t => {
+    const b = document.createElement('button');
+    b.textContent = t.label;
+    b.setAttribute('aria-pressed', String(t.id === cur));
+    b.onclick = () => {
+      S.tools[S.tab] = t.id;
+      buildPanel();
+      b.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    };
+    row.appendChild(b);
+  });
+  setTimeout(() => {
+    const sel = row.querySelector('[aria-pressed="true"]');
+    if (sel) sel.scrollIntoView({ inline: 'center', block: 'nearest' });
+  }, 0);
 
-      if (!isBW) {
-        body.appendChild(sep());
-        body.appendChild(sub('減色法濾鏡盤'));
-        body.appendChild(note('加黃 → 偏藍，加洋紅 → 偏綠，加青 → 偏紅。這是暗房的反向邏輯，不是寫錯。'));
-        body.appendChild(slider({
-          label: '黃 Yellow', hint: '→ 畫面偏藍', min: 0, max: 170, step: 5,
-          get: () => S.cy, set: v => S.cy = v, fmt: v => String(v)
-        }));
-        body.appendChild(slider({
-          label: '洋紅 Magenta', hint: '→ 畫面偏綠', min: 0, max: 170, step: 5,
-          get: () => S.cm, set: v => S.cm = v, fmt: v => String(v)
-        }));
-        body.appendChild(slider({
-          label: '青 Cyan', hint: '→ 畫面偏紅', min: 0, max: 170, step: 5,
-          get: () => S.cc, set: v => S.cc = v, fmt: v => String(v)
-        }));
-        const presets = document.createElement('div');
-        presets.className = 'ctl';
-        presets.innerHTML = '<div class="top"><span class="lab">濾鏡預設</span></div><div class="seg"></div>';
-        const pbox = presets.querySelector('.seg');
-        [['日光', 0, 0, 0], ['鈀絲燈', 0, 15, 75], ['陰天', 25, 10, 0],
-         ['螢光燈', 10, 45, 0], ['黃昏', 45, 20, 0]].forEach(([n, c, m, y]) => {
-          const b = document.createElement('button');
-          b.textContent = n;
-          b.onclick = () => { S.cc = c; S.cm = m; S.cy = y; buildPanel(); requestRender(); };
-          pbox.appendChild(b);
-        });
-        body.appendChild(presets);
+  const slot = $('slot');
+  slot.innerHTML = '';
+  const tool = tools.find(t => t.id === cur);
+  if (tool) slot.appendChild(tool.make());
 
-        body.appendChild(sep());
-        body.appendChild(seg({
-          label: '相紙', items: PAPERS.color.map(p => ({ label: p.name, value: p.id })),
-          get: () => S.paperC, set: v => S.paperC = v, rebuild: true
-        }));
-        const pc = PAPERS.color.find(x => x.id === S.paperC);
-        if (pc) body.appendChild(note(`${pc.brand} ${pc.name} — ${pc.note}`));
-      } else {
-        body.appendChild(sep());
-        body.appendChild(sub('相紙'));
-        body.appendChild(seg({
-          label: '反差號數', hint: '0 最軟 · 5 最硬', cls: 'grades',
-          items: [0, 1, 2, 3, 4, 5].map(g => ({ label: String(g), value: g })),
-          get: () => S.grade, set: v => S.grade = v
-        }));
-        body.appendChild(seg({
-          label: '紙張', items: PAPERS.bw.map(p => ({ label: p.name.replace('Multigrade ', 'MG '), value: p.id })),
-          get: () => S.paperB, set: v => S.paperB = v, rebuild: true
-        }));
-        const pb = PAPERS.bw.find(x => x.id === S.paperB);
-        if (pb) body.appendChild(note(`${pb.brand} ${pb.name} — ${pb.note}`));
-
-        body.appendChild(sep());
-        body.appendChild(sub('化學調色'));
-        body.appendChild(seg({
-          items: TONERS.map(t => ({ label: t.name, value: t.id })),
-          get: () => S.toner, set: v => S.toner = v, rebuild: true
-        }));
-        if (S.toner !== 'none') {
-          body.appendChild(slider({
-            label: '調色濃度', min: 0, max: 150, step: 5,
-            get: () => S.tonerAmt, set: v => S.tonerAmt = v, fmt: v => v + '%'
-          }));
-        }
-        body.appendChild(slider({
-          label: '減薄劑', hint: '弱化暗部', min: 0, max: 100, step: 5,
-          get: () => S.bleach, set: v => S.bleach = v, fmt: v => v + '%'
-        }));
-      }
-
-      // 加光 / 遮光
-      body.appendChild(sep());
-      body.appendChild(sub('加光 / 遮光'));
-      const t = toggle('用手指局部加減光', () => S.brush, v => {
-        S.brush = v;
-        $('tray').dataset.brush = v ? 'on' : 'off';
-      }, live ? '先拍一張' : '');
-      t.cb.dataset.rb = '1';
-      body.appendChild(t.el);
-      if (S.brush) {
-        body.appendChild(seg({
-          items: [{ label: '加光（變暗）', value: 'burn' }, { label: '遮光（變亮）', value: 'dodge' }],
-          get: () => S.brushMode, set: v => S.brushMode = v
-        }));
-        body.appendChild(slider({
-          label: '筆刷大小', min: 8, max: 80, step: 2,
-          get: () => S.brushSize, set: v => S.brushSize = v, fmt: v => v + '%'
-        }));
-        body.appendChild(slider({
-          label: '力道', min: 10, max: 200, step: 5,
-          get: () => S.brushK, set: v => S.brushK = v, fmt: v => v + '%'
-        }));
-        const clr = document.createElement('div');
-        clr.className = 'seg';
-        const cb = document.createElement('button');
-        cb.textContent = '全部洗掉';
-        cb.onclick = clearMask;
-        clr.appendChild(cb);
-        body.appendChild(clr);
-      }
-    }
-  }
-
-  if (S.tab === 'out') {
-    body.appendChild(seg({
-      label: '邊框', items: [
-        { label: '無', value: 'none' },
-        { label: '相紙白邊', value: 'paper' },
-        { label: '底片齒孔', value: 'film' }
-      ],
-      get: () => S.border, set: v => S.border = v
-    }));
-    body.appendChild(toggle('日期戳印', () => S.stamp, v => S.stamp = v, '右下角橘字').el);
-    body.appendChild(sep());
-    body.appendChild(note('存檔會用原始解析度重新沖洗一次，然後開啟分享選單 — 選「儲存影像」就會進相簿。'));
-    const info = document.createElement('div');
-    info.className = 'sub';
-    info.textContent = src.w ? `原稿 ${src.w} × ${src.h}` : '還沒有影像';
-    body.appendChild(info);
-  }
+  requestAnimationFrame(() => { fitCanvas(); if (!live) draw(); });
 }
 
 // ───────── 啟動 ─────────
