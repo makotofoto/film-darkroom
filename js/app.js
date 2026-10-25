@@ -37,6 +37,9 @@ const S = {
   // 加光 / 遮光
   brush: false, brushMode: 'burn', brushSize: 38, brushK: 90,
 
+  // 取景畫幅（相機模式）
+  frame: '3:2',
+
   // 輸出
   border: 'none', stamp: false,
 
@@ -61,6 +64,40 @@ function toast(msg, ms = 2000) {
 
 // ───────── 參數組裝 ─────────
 function currentFilm() { return FILM_BY_ID[S.filmId] || FILMS[0]; }
+
+const FRAMES = {
+  '3:2':  { ar: 2 / 3,  label: '3:2' },
+  '1:1':  { ar: 1,      label: '1:1' },
+  'full': { ar: 0,      label: '滿版' }   // ar 0 = 跟著螢幕
+};
+
+// 取景畫幅的長寬比（寬/高）
+function frameAspect() {
+  const f = FRAMES[S.frame] || FRAMES['3:2'];
+  if (f.ar) return f.ar;
+  const st = document.querySelector('.stage');
+  return Math.max(0.3, st.clientWidth / Math.max(1, st.clientHeight));
+}
+
+// 把原稿「填滿」目標畫幅所需的取樣裁切
+function coverCrop(srcW, srcH, targetAR) {
+  const sa = srcW / srcH;
+  if (!isFinite(sa) || !isFinite(targetAR) || targetAR <= 0) {
+    return { scale: [1, 1], offset: [0, 0] };
+  }
+  if (sa > targetAR) {
+    const sx = targetAR / sa;
+    return { scale: [sx, 1], offset: [(1 - sx) / 2, 0] };
+  }
+  const sy = sa / targetAR;
+  return { scale: [1, sy], offset: [0, (1 - sy) / 2] };
+}
+
+// 相機模式才裁切；沖洗既有照片時整張都要看得到
+function activeCrop() {
+  if (!live || !src.w) return { scale: [1, 1], offset: [0, 0] };
+  return coverCrop(src.w, src.h, frameAspect());
+}
 
 function buildParams(outW, outH) {
   const f = currentFilm();
@@ -127,7 +164,11 @@ function buildParams(outW, outH) {
   const gScale = GRAIN_BASE / longEdge;
   const grainRes = [outW * gScale, outH * gScale];
 
+  const crop = activeCrop();
+
   return {
+    srcScale: new Float32Array(crop.scale),
+    srcOffset: new Float32Array(crop.offset),
     mix: f.mix ? mat3(f.mix) : mat3([1,0,0, 0,1,0, 0,0,1]),
     bwMix: new Float32Array(bwMix),
     shTint: new Float32Array(f.shTint),
@@ -178,9 +219,10 @@ function fitCanvas() {
   const view = $('view');
   if (!src.w) return;
   const stage = document.querySelector('.stage');
-  const availW = stage.clientWidth - 28;
-  const availH = stage.clientHeight - 14;
-  const ar = src.w / src.h;
+  const pad = live ? 0 : 28;
+  const availW = stage.clientWidth - pad;
+  const availH = stage.clientHeight - (live ? 0 : 14);
+  const ar = live ? frameAspect() : (src.w / src.h);
   let w = availW, h = w / ar;
   if (h > availH) { h = availH; w = h * ar; }
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -286,11 +328,18 @@ async function startCamera() {
   live = true;
   src.el = v;
   hasMask = false;
+  S.brush = false;
+  document.body.dataset.live = 'on';
+  $('tray').dataset.brush = 'off';
   $('empty').hidden = true;
   $('tray').classList.add('has-image');
   $('bShot').hidden = false;
   $('bFlip').hidden = false;
-  $('bSave').disabled = true;
+  $('bClose').hidden = false;
+  $('bCam').hidden = true;
+  $('bLib').hidden = true;
+  $('bSave').hidden = true;
+  buildFrameBar();
   $('view').style.transform = facing === 'user' ? 'scaleX(-1)' : '';
   cancelAnimationFrame(rafId);
   loop();
@@ -302,22 +351,68 @@ function stopCamera() {
   cancelAnimationFrame(rafId);
   if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
   $('video').srcObject = null;
+  delete document.body.dataset.live;
   $('bShot').hidden = true;
   $('bFlip').hidden = true;
+  $('bClose').hidden = true;
+  $('bCam').hidden = false;
+  $('bLib').hidden = false;
+  $('bSave').hidden = false;
   $('view').style.transform = '';
+  fitCanvas();
+}
+
+// 取景畫幅切換列（只在相機模式出現）
+function buildFrameBar() {
+  const bar = $('frameBar');
+  bar.innerHTML = '';
+  Object.entries(FRAMES).forEach(([k, f]) => {
+    const b = document.createElement('button');
+    b.textContent = f.label;
+    b.setAttribute('aria-pressed', String(S.frame === k));
+    b.onclick = () => {
+      S.frame = k;
+      buildFrameBar();
+      fitCanvas();
+    };
+    bar.appendChild(b);
+  });
+}
+
+// 離開相機，回到沖洗檯
+function closeCamera() {
+  stopCamera();
+  if (!src.w || src.el === $('video')) {
+    src = { el: null, w: 0, h: 0 };
+    $('empty').hidden = false;
+    $('tray').classList.remove('has-image');
+    $('bSave').disabled = true;
+    const gl = R.gl;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.clearColor(0, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+  } else {
+    fitCanvas(); draw();
+  }
 }
 
 function shoot() {
   const v = $('video');
   if (!v.videoWidth) return;
-  const w = v.videoWidth, h = v.videoHeight;
+  const vw = v.videoWidth, vh = v.videoHeight;
+  const crop = coverCrop(vw, vh, frameAspect());
+  const sx = Math.round(crop.offset[0] * vw);
+  const sy = Math.round(crop.offset[1] * vh);
+  const sw = Math.max(1, Math.round(crop.scale[0] * vw));
+  const sh = Math.max(1, Math.round(crop.scale[1] * vh));
+
   const c = document.createElement('canvas');
-  c.width = w; c.height = h;
+  c.width = sw; c.height = sh;
   const ctx = c.getContext('2d');
-  if (facing === 'user') { ctx.translate(w, 0); ctx.scale(-1, 1); }
-  ctx.drawImage(v, 0, 0, w, h);
+  if (facing === 'user') { ctx.translate(sw, 0); ctx.scale(-1, 1); }
+  ctx.drawImage(v, sx, sy, sw, sh, 0, 0, sw, sh);
   frameNo++;
-  setStill(c, w, h);
+  setStill(c, sw, sh);
   toast('曝光完成 — 進暗房沖洗吧');
 }
 
@@ -893,7 +988,16 @@ function init() {
   $('tFilm').onclick = () => { S.tab = 'film'; buildPanel(); };
   $('tRoom').onclick = () => { S.tab = 'room'; buildPanel(); };
   $('tOut').onclick = () => { S.tab = 'out'; buildPanel(); };
-  $('chev').onclick = () => $('panel').classList.toggle('collapsed');
+  const togglePanel = () => {
+    $('panel').classList.toggle('collapsed');
+    setTimeout(() => { fitCanvas(); if (!live) draw(); }, 200);
+  };
+  $('chev').onclick = togglePanel;
+  // 點照片本身也能收合，看大圖
+  $('tray').addEventListener('click', () => {
+    if (live || S.brush || !src.w) return;
+    togglePanel();
+  });
 
   $('bLib').onclick = () => $('file').click();
   $('file').onchange = e => {
@@ -904,6 +1008,7 @@ function init() {
   $('bCam').onclick = startCamera;
   $('bShot').onclick = shoot;
   $('bFlip').onclick = () => { facing = facing === 'user' ? 'environment' : 'user'; startCamera(); };
+  $('bClose').onclick = closeCamera;
   $('bSave').onclick = save;
 
   bindBrush();
@@ -916,8 +1021,15 @@ function init() {
     clearTimeout(rt);
     rt = setTimeout(() => { fitCanvas(); if (!live) draw(); }, 120);
   });
+  // 切到背景就放開相機；切回來自動接上，不會留一張死畫面
+  let resumeCam = false;
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) stopCamera();
+    if (document.hidden) {
+      if (live) { resumeCam = true; stopCamera(); }
+    } else if (resumeCam) {
+      resumeCam = false;
+      startCamera();
+    }
   });
   window.addEventListener('gesturestart', e => e.preventDefault());
 }

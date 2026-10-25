@@ -55,6 +55,7 @@ uniform sampler2D uSrc;
 uniform sampler2D uHalo;
 uniform sampler2D uMask;
 uniform vec2  uSrcTexel;
+uniform vec2  uSrcScale, uSrcOffset;   // 取景裁切（相機模式填滿畫面用）
 
 // ── 底片 ──
 uniform mat3  uMix;
@@ -110,15 +111,16 @@ float grainNoise(vec2 p){
 }
 
 void main(){
-  vec2 uv = vUv;
+  vec2 uv  = vUv;                       // 輸出畫面座標
+  vec2 suv = vUv * uSrcScale + uSrcOffset;   // 原稿座標
 
   // ── 取樣（含銳利度：模擬 T 顆粒底片的解析力）──
-  vec3 src = texture2D(uSrc, uv).rgb;
+  vec3 src = texture2D(uSrc, suv).rgb;
   if (uSharpen > 0.001) {
-    vec3 blur = texture2D(uSrc, uv + vec2(uSrcTexel.x, 0.0)).rgb
-              + texture2D(uSrc, uv - vec2(uSrcTexel.x, 0.0)).rgb
-              + texture2D(uSrc, uv + vec2(0.0, uSrcTexel.y)).rgb
-              + texture2D(uSrc, uv - vec2(0.0, uSrcTexel.y)).rgb;
+    vec3 blur = texture2D(uSrc, suv + vec2(uSrcTexel.x, 0.0)).rgb
+              + texture2D(uSrc, suv - vec2(uSrcTexel.x, 0.0)).rgb
+              + texture2D(uSrc, suv + vec2(0.0, uSrcTexel.y)).rgb
+              + texture2D(uSrc, suv - vec2(0.0, uSrcTexel.y)).rgb;
     src += (src - blur * 0.25) * uSharpen;
   }
 
@@ -150,7 +152,7 @@ void main(){
 
   // 紅色光暈：高光從片基反射回來
   if (uHalation > 0.001) {
-    vec3 halo = texture2D(uHalo, uv).rgb;
+    vec3 halo = texture2D(uHalo, suv).rgb;
     v += halo * uHalation * vec3(1.0, 0.30, 0.16) * 0.9;
   }
 
@@ -388,6 +390,8 @@ class Renderer {
     gl.uniform1i(u.uMask, 2);
 
     gl.uniform2f(u.uSrcTexel, 1 / this.srcSize[0], 1 / this.srcSize[1]);
+    gl.uniform2fv(u.uSrcScale, P.srcScale);
+    gl.uniform2fv(u.uSrcOffset, P.srcOffset);
     gl.uniformMatrix3fv(u.uMix, false, P.mix);
     gl.uniform3fv(u.uBwMix, P.bwMix);
     gl.uniform3fv(u.uShTint, P.shTint);
